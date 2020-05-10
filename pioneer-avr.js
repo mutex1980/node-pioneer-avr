@@ -471,6 +471,14 @@ var Inputs = {
     //hdmi_cyclic: "31",
 };
 
+var ListeningModes = {
+    0152: "OPTIMUM SURROUND",
+    0151: "Auto Level Control (A.L.C.)",
+    0112: "EXTENDED STEREO",
+    0004: "Front Stage Surround Advance Wide",
+}
+
 
 exports.VSX = VSX;
 exports.Inputs = Inputs;
+exports.ListeningModes = ListeningModes;
