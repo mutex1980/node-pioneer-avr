@@ -472,10 +472,10 @@ var Inputs = {
 };
 
 var ListeningModes = {
-    0152: "OPTIMUM SURROUND",
-    0151: "Auto Level Control (A.L.C.)",
-    0112: "EXTENDED STEREO",
-    0004: "Front Stage Surround Advance Wide",
+    152: "OPTIMUM SURROUND",
+    151: "Auto Level Control (A.L.C.)",
+    112: "EXTENDED STEREO",
+    4: "Front Stage Surround Advance Wide",
 }
 
 
