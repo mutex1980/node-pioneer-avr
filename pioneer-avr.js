@@ -8,8 +8,9 @@ var util = require('util'),
     events = require('events');
 
 
-var TRACE = false;
-var DETAIL = false; // detail logging flag
+var TRACE = true;
+var DETAIL = true; // detail logging flag
+var debug_log;
 
 /**
  * Important include host and port.
@@ -28,6 +29,13 @@ var VSX = function(options) {
     this.inputNames = {};
 
     TRACE = options.log;
+
+    if (options.hasOwnProperty("debug_log")) {
+        debug_log = options.debug_log;
+        debug_log("configured custom debug logger");
+    } else {
+        debug_log = console.log
+    }
 };
 
 util.inherits(VSX, events.EventEmitter);
@@ -65,6 +73,7 @@ VSX.prototype.query = function() {
     self.client.write("?M\r"); // query mute state
     self.client.write("?Z2M\r"); // query mute state
     self.client.write("?F\r"); // query selected input
+    self.client.write("?L\r"); // query display listening mode
 
     // get input names
     var timeout = 100;
@@ -224,7 +233,7 @@ VSX.prototype.queryInputName = function(inputId) {
  * Set the listening mode
  */
 VSX.prototype.listeningMode = function(mode) {
-    this.client.write("MF\r");
+    this.client.write(mode.toString().padStart(4,"0")+"SR\r");
 };
 
 /**
@@ -377,12 +386,28 @@ function handleData(self, d) {
         if (TRACE && DETAIL) {
             console.log("got BPR: " + data);
         }
-    } else if (data.startsWith("LM")) { // listening mode
-        var mode = data.substring(2);
-        if (TRACE) {
-            console.log("got listening mode: " + mode);
-        }
-    } else if (data.startsWith("FL")) { // FL display information
+    }
+    else if (data.startsWith("SR")) { // listening mode     // DO NOT REACT ON SR - IT REFLECTS THE REMOTE KEY PRESSED TO CYCLIC SHIFT THROUGH MODES
+        debug_log("received set listening mode: " + data);
+        var mode = parseInt(data.substring(2), 10);
+    //    debug_log("received SR (LISTENING MODE SET): " + data + " (" + (mode in ListeningModes ? ListeningModes[mode] : "???") + ")");
+        //if (TRACE && DETAIL) {
+        //    console.error("got listening mode: " + mode);
+        //}
+        debug_log("requesting display listening mode.");
+        self.client.write("?L\r"); // query display listening mode
+        self.emit("listening_mode_set", mode);
+    }
+    else if (data.startsWith("LM")) { // listening mode display
+        debug_log("received display listening mode: " + data);
+        var mode_hex = parseInt(data.substring(2), 16);
+        var mode_int = 999; // set to unknown
+        for (var mode_str in ListeningModes) if (ListeningModes[mode_str][1] == mode_hex) mode_int = ListeningModes[mode_str][0];
+        if (mode_int != null) debug_log("decoded hex listening mode: 0x" + mode_hex.toString(16) + " into " + mode_int);
+        else debug_log("unable to decode hex listening mode: 0x" + mode_hex.toString(16));
+        self.emit("listening_mode_display", mode_int);
+    }
+    else if (data.startsWith("FL")) { // FL display information
         if (TRACE && DETAIL) {
             console.log("got FL: " + data);
         }
@@ -472,13 +497,28 @@ var Inputs = {
 };
 
 var ListeningModes = {
-    152: "OPTIMUM SURROUND",
-    151: "Auto Level Control (A.L.C.)",
-    112: "EXTENDED STEREO",
-    4: "Front Stage Surround Advance Wide",
+    "OPTIMUM SURROUND" : [152, 0x881],
+    "Auto Level Control (Straight Decode)" : [151, 0x505],
+    "PURE DIRECT" : [8, 0x705],
+    "Front Stage Surround Advance Wide" : [4, 0x210],
+    "EXTENDED STEREO" : [112, 0x20D],
+
+    "Unknown" : [999, 0xFFF],
 }
 
+var ListeningModeSR2ModeName;
+
+VSX.prototype.getDisplayModes = function() {
+    if (ListeningModeSR2ModeName == null ) {
+    ListeningModeSR2ModeName = {}
+        for (var mode_str in ListeningModes) {
+            var mode_int = ListeningModes[mode_str][0];
+            if (mode_int != 999) ListeningModeSR2ModeName[mode_int] = mode_str;
+            debug_log("added " + mode_int + " -> " + mode_str);
+        }
+    }
+    return ListeningModeSR2ModeName;
+}
 
 exports.VSX = VSX;
 exports.Inputs = Inputs;
-exports.ListeningModes = ListeningModes;
