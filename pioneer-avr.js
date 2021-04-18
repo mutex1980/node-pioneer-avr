@@ -500,6 +500,7 @@ var Inputs = {
     hdmi_3: 21,
     hdmi_4: 22,
     hdmi_5: 23,
+    hdmi_7: 34,
     media: 26,
     ipod_usb: 17,
     xm_radio: 18,
