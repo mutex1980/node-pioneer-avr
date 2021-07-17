@@ -216,7 +216,10 @@ VSX.prototype.zvolumeDown = function() {
  * Set the input
  */
 VSX.prototype.selectInput = function(input) {
-    this.client.write(input + "FN\r");
+    let cmd = input.toString().padStart(2,"0") + "FN\r";
+    debug_log("(pioneer-avr::VSX.prototype.selectInput) set input mode to: " + input + ", type: " + typeof(input) + ", cmd: " + cmd);
+    this.client.write(cmd);
+    this.client.write("?F\r");
 };
 
 VSX.prototype.selectZInput = function(input) {
@@ -233,6 +236,7 @@ VSX.prototype.queryInputName = function(inputId) {
  * Set the listening mode
  */
 VSX.prototype.listeningMode = function(mode) {
+    debug_log("(pioneer-avr::VSX.prototype.listeningMode) set listening mode to: " + mode);
     this.client.write(mode.toString().padStart(4,"0")+"SR\r");
 };
 
@@ -361,11 +365,12 @@ function handleData(self, d) {
         self.emit("zmute", mute);
     } 
 	else if (data.startsWith("FN")) {
+	    debug_log("(pioneer-avr::handleData) received input mode: " + data);
         input = data.substr(2, 2);
         if (TRACE) {
             console.log("got input: " + input + " : " + self.inputNames[input]);
         }
-        self.emit("input", input, self.inputNames[input]);
+        self.emit("input", parseInt(input, 10), self.inputNames[input]);
     } 
 	else if (data.startsWith("Z2F")) {
         input = data.substr(3, 2);
@@ -388,23 +393,28 @@ function handleData(self, d) {
         }
     }
     else if (data.startsWith("SR")) { // listening mode     // DO NOT REACT ON SR - IT REFLECTS THE REMOTE KEY PRESSED TO CYCLIC SHIFT THROUGH MODES
-        debug_log("received set listening mode: " + data);
+        debug_log("(pioneer-avr::handleData) received set listening mode: " + data);
         var mode = parseInt(data.substring(2), 10);
     //    debug_log("received SR (LISTENING MODE SET): " + data + " (" + (mode in ListeningModes ? ListeningModes[mode] : "???") + ")");
         //if (TRACE && DETAIL) {
         //    console.error("got listening mode: " + mode);
         //}
-        debug_log("requesting display listening mode.");
+        debug_log("(pioneer-avr::handleData) requesting display listening mode.");
         self.client.write("?L\r"); // query display listening mode
         self.emit("listening_mode_set", mode);
     }
     else if (data.startsWith("LM")) { // listening mode display
-        debug_log("received display listening mode: " + data);
+        debug_log("(pioneer-avr::handleData) received display listening mode: " + data);
         var mode_hex = parseInt(data.substring(2), 16);
         var mode_int = 999; // set to unknown
-        for (var mode_str in ListeningModes) if (ListeningModes[mode_str][1] == mode_hex) mode_int = ListeningModes[mode_str][0];
-        if (mode_int != null) debug_log("decoded hex listening mode: 0x" + mode_hex.toString(16) + " into " + mode_int);
-        else debug_log("unable to decode hex listening mode: 0x" + mode_hex.toString(16));
+        var mode_str = null;
+        for (var ms in ListeningModes) if (ListeningModes[ms][1].includes(mode_hex)) {
+            mode_int = ListeningModes[ms][0];
+            mode_str = ms;
+            break;
+        }
+        if (mode_str != null) debug_log("(pioneer-avr::handleData) decoded hex listening mode: 0x" + mode_hex.toString(16) + " into " + mode_int + " (" + mode_str + ")");
+        else debug_log("(pioneer-avr::handleData) unable to decode hex listening mode: 0x" + mode_hex.toString(16));
         self.emit("listening_mode_display", mode_int);
     }
     else if (data.startsWith("FL")) { // FL display information
@@ -469,55 +479,79 @@ if (typeof String.prototype.endsWith != 'function') {
         return this.slice(-str.length) == str;
     };
 }
+/*
+var Inputs = {
+    SC-LX76 : {
+        "IN1/DVD" : 4,
+
+    }
+}*/
 
 var Inputs = {
-    dvd: "04",
-    bd: "25",
-    tv_sat: "05",
-    kabel: "06",
-    dvr_bdr: "15",
-    video_1: "10",
-    video_2: "14",
-    hdmi_1: "19",
-    hdmi_2: "20",
-    hdmi_3: "21",
-    hdmi_4: "22",
-    hdmi_5: "23",
-    media: "26",
-    ipod_usb: "17",
-    xm_radio: "18",
-    cd: "01",
-    cdr_tape: "03",
-    tuner: "02",
-    phono: "00",
-    multi_ch: "12",
-    adapter_port: "33",
-    sirius: "27",
+    dvd: 4,
+    bd: 25,
+    tv_sat: 05,
+    kabel: 06,
+    dvr_bdr: 15,
+    video_1: 10,
+    video_2: 14,
+    hdmi_1: 19,
+    hdmi_2: 20,
+    hdmi_3: 21,
+    hdmi_4: 22,
+    hdmi_5: 23,
+    hdmi_7: 34,
+    media: 26,
+    ipod_usb: 17,
+    xm_radio: 18,
+    cd: 01,
+    cdr_tape: 03,
+    tuner: 02,
+    phono: 00,
+    multi_ch: 12,
+    adapter_port: 33,
+    sirius: 27,
+    "MediaServer/Airplay": 44,
     //hdmi_cyclic: "31",
 };
 
-var ListeningModes = {
-    "OPTIMUM SURROUND" : [152, 0x881],
-    "Auto Level Control (Straight Decode)" : [151, 0x505],
-    "PURE DIRECT" : [8, 0x705],
-    "Front Stage Surround Advance Wide" : [4, 0x210],
-    "EXTENDED STEREO" : [112, 0x20D],
 
-    "Unknown" : [999, 0xFFF],
+// SET CODE IN DECIMAL -> [acknowledged display listening modes by receiver]
+var ListeningModes = {
+    "OPTIMUM SURROUND" : [152, [0x881]],
+    "Auto Level Control (Straight Decode)" : [151, [0x501,0x505]],
+    "PURE DIRECT" : [8, [0x701,0x705]],
+    "Front Stage Surround Advance Wide" : [4, [0x210]],
+    "EXTENDED STEREO" : [112, [0x20d]],
+    "TV Surround" : [116, [0x207]],
+    //"STEREO" : [9,[0x401]],
+
+    "Unknown" : [999, [0xFFF]],
 }
 
 var ListeningModeSR2ModeName;
-
 VSX.prototype.getDisplayModes = function() {
     if (ListeningModeSR2ModeName == null ) {
-    ListeningModeSR2ModeName = {}
-        for (var mode_str in ListeningModes) {
-            var mode_int = ListeningModes[mode_str][0];
-            if (mode_int != 999) ListeningModeSR2ModeName[mode_int] = mode_str;
+    ListeningModeSR2ModeName = {};
+    for (var mode_str in ListeningModes) {
+        var mode_int = ListeningModes[mode_str][0];
+        if (mode_int != 999) ListeningModeSR2ModeName[mode_int] = mode_str;
             debug_log("added " + mode_int + " -> " + mode_str);
         }
     }
     return ListeningModeSR2ModeName;
+}
+
+var InputModeFN2ModeName;
+VSX.prototype.getInputModes = () => {
+    if (InputModeFN2ModeName == null ) {
+        InputModeFN2ModeName = {};
+        for (var inputName in Inputs) {
+            var mode_int = Inputs[inputName];
+            InputModeFN2ModeName[mode_int]=inputName;
+        }
+    }
+    return InputModeFN2ModeName;
 }
 
 exports.VSX = VSX;
